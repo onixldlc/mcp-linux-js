@@ -479,7 +479,9 @@ function bootBanner(cfg: Config, allow: AllowList): void {
     log(`bind:        http://${cfg.host}:${cfg.port}/mcp`);
     log(`health:      http://${cfg.host}:${cfg.port}/healthz`);
     if (cfg.token && cfg.token.length >= 16) {
-      log(`auth:        Bearer token set (${cfg.token.length} chars, ${tokenFingerprint(cfg.token)})`);
+      log(`auth:        Bearer token (${cfg.token.length} chars, fp ${tokenFingerprint(cfg.token)}):`);
+      log(`             ${cfg.token}`);
+      log(`             Authorization: Bearer ${cfg.token}`);
     } else if (cfg.token) {
       log(`auth:        ⚠  token too short (${cfg.token.length} chars, need >=16)`);
       log(`             Generate one:  openssl rand -hex 32`);
