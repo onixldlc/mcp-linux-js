@@ -1,0 +1,32 @@
+{
+  "name": "mcp-shell-bun",
+  "version": "1.0.0",
+  "description": "Shell MCP server (Bun port of tumf/mcp-shell-server + remote HTTP + bearer auth + file tools).",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "mcp-shell-bun": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "bun run src/index.ts",
+    "compile:linux-x64":    "bun build src/index.ts --compile --target=bun-linux-x64    --outfile dist/mcp-shell-bun-linux-x64",
+    "compile:linux-arm64":  "bun build src/index.ts --compile --target=bun-linux-arm64  --outfile dist/mcp-shell-bun-linux-arm64",
+    "compile:darwin-x64":   "bun build src/index.ts --compile --target=bun-darwin-x64   --outfile dist/mcp-shell-bun-darwin-x64",
+    "compile:darwin-arm64": "bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile dist/mcp-shell-bun-darwin-arm64",
+    "compile:windows-x64":  "bun build src/index.ts --compile --target=bun-windows-x64  --outfile dist/mcp-shell-bun-windows-x64.exe",
+    "compile:all": "bun run compile:linux-x64 && bun run compile:linux-arm64 && bun run compile:darwin-x64 && bun run compile:darwin-arm64 && bun run compile:windows-x64"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "express": "^4.21.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": { "node": ">=18" }
+}
