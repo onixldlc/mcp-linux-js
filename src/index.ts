@@ -21,6 +21,7 @@ import { z } from "zod";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { parseArgs } from "node:util";
 
 import { loadAllowList, validateCommand, type AllowList } from "./validator.js";
 import { execPipeline } from "./executor.js";
@@ -357,26 +358,145 @@ Returns { path, count, entries: [{ name, type, size_bytes? }] }`,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Config (CLI args + env)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Config {
+  transport: "stdio" | "http";
+  host: string;
+  port: number;
+  token: string | undefined;
+  allowCommands: string | undefined;
+}
+
+function printHelp(): void {
+  const name = SERVER_NAME;
+  console.log(
+`${name} v${SERVER_VERSION}
+
+Usage: ${name} [options]
+
+Options:
+  -t, --transport <stdio|http>   Transport (default: stdio)          [env: TRANSPORT]
+  -H, --host <addr>              HTTP bind address (default: 127.0.0.1) [env: HOST]
+  -p, --port <num>               HTTP port (default: 3000)            [env: PORT]
+      --token <str>              Bearer token for HTTP (>=16 chars)   [env: SHELL_MCP_TOKEN]
+      --allow-commands <csv>     Comma-sep allowlist. Unset = unrestricted.
+                                                                      [env: ALLOW_COMMANDS]
+  -h, --help                     Show this help
+  -v, --version                  Show version
+
+CLI flags override env vars. Env vars override defaults.
+
+Examples:
+  ${name} --allow-commands "ls,cat,pwd,grep"
+  ${name} -t http -H 127.0.0.1 -p 3000 --token "$(openssl rand -hex 32)"
+
+Generate an HTTP token:
+  openssl rand -hex 32
+`);
+}
+
+function parseCli(): Config {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: process.argv.slice(2),
+      options: {
+        transport:        { type: "string", short: "t" },
+        host:             { type: "string", short: "H" },
+        port:             { type: "string", short: "p" },
+        token:            { type: "string" },
+        "allow-commands": { type: "string" },
+        help:             { type: "boolean", short: "h" },
+        version:          { type: "boolean", short: "v" },
+      },
+      allowPositionals: false,
+      strict: true,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[${SERVER_NAME}] arg error: ${msg}`);
+    console.error(`Run '${SERVER_NAME} --help' for usage.`);
+    process.exit(2);
+  }
+
+  if (parsed.values.help) { printHelp(); process.exit(0); }
+  if (parsed.values.version) { console.log(`${SERVER_NAME} v${SERVER_VERSION}`); process.exit(0); }
+
+  const tRaw = (parsed.values.transport ?? process.env.TRANSPORT ?? "stdio").toLowerCase();
+  if (tRaw !== "stdio" && tRaw !== "http") {
+    console.error(`[${SERVER_NAME}] invalid --transport: '${tRaw}' (expected 'stdio' or 'http')`);
+    process.exit(2);
+  }
+
+  const host = parsed.values.host ?? process.env.HOST ?? "127.0.0.1";
+  const portStr = parsed.values.port ?? process.env.PORT ?? "3000";
+  const port = parseInt(portStr, 10);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`[${SERVER_NAME}] invalid --port: '${portStr}' (expected 1..65535)`);
+    process.exit(2);
+  }
+
+  const token = parsed.values.token ?? process.env.SHELL_MCP_TOKEN;
+  const allowCommands =
+    parsed.values["allow-commands"] ??
+    process.env.ALLOW_COMMANDS ??
+    process.env.ALLOWED_COMMANDS;
+
+  return { transport: tRaw, host, port, token, allowCommands };
+}
+
+function tokenFingerprint(tok: string): string {
+  if (tok.length <= 10) return "***";
+  return `${tok.slice(0, 6)}…${tok.slice(-4)}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Transports
 // ─────────────────────────────────────────────────────────────────────────────
 
-function bootBanner(allow: AllowList, mode: string): void {
-  console.error(`[${SERVER_NAME}] v${SERVER_VERSION} — ${mode} transport`);
+function bootBanner(cfg: Config, allow: AllowList): void {
+  const bunVer = (globalThis as { Bun?: { version: string } }).Bun?.version;
+  const runtime = bunVer ? `Bun ${bunVer}` : `Node ${process.version}`;
+  const log = (s: string) => console.error(`[${SERVER_NAME}] ${s}`);
+
+  log(`v${SERVER_VERSION}`);
+  log(`transport:   ${cfg.transport}`);
+  log(`runtime:     ${runtime} on ${process.platform}/${process.arch}`);
+  log(`user:        ${os.userInfo().username}@${os.hostname()}`);
+  log(`pid:         ${process.pid}`);
+  log(`cwd:         ${process.cwd()}`);
+
   if (allow.unrestricted) {
-    console.error(
-      `[${SERVER_NAME}] ⚠  ALLOW_COMMANDS is unset — UNRESTRICTED mode. ` +
-      `Any command the process user can run will execute. Set ALLOW_COMMANDS="ls,cat,..." to enforce an allowlist.`
-    );
+    log(`allowlist:   ⚠  UNRESTRICTED — any command the process user can run will execute.`);
+    log(`             Restrict with:  --allow-commands "ls,cat,pwd,grep"   (or ALLOW_COMMANDS env)`);
   } else {
-    console.error(
-      `[${SERVER_NAME}] allowlist: ${[...allow.commands].sort().join(", ")}`
-    );
+    log(`allowlist:   ${[...allow.commands].sort().join(", ")}`);
+  }
+
+  if (cfg.transport === "http") {
+    log(`bind:        http://${cfg.host}:${cfg.port}/mcp`);
+    log(`health:      http://${cfg.host}:${cfg.port}/healthz`);
+    if (cfg.token && cfg.token.length >= 16) {
+      log(`auth:        Bearer token set (${cfg.token.length} chars, ${tokenFingerprint(cfg.token)})`);
+    } else if (cfg.token) {
+      log(`auth:        ⚠  token too short (${cfg.token.length} chars, need >=16)`);
+      log(`             Generate one:  openssl rand -hex 32`);
+      log(`             Pass via:      --token <token>   or   SHELL_MCP_TOKEN=<token>`);
+    } else {
+      log(`auth:        ⚠  NO TOKEN SET — HTTP transport will refuse to start.`);
+      log(`             Generate one:  openssl rand -hex 32`);
+      log(`             Pass via:      --token <token>   or   SHELL_MCP_TOKEN=<token>`);
+    }
+    if (cfg.host === "0.0.0.0") {
+      log(`             ⚠  bound to 0.0.0.0 — token is your only defense. Prefer 127.0.0.1 + SSH tunnel.`);
+    }
   }
 }
 
-async function runStdio(): Promise<void> {
-  const allow = loadAllowList();
-  bootBanner(allow, "stdio");
+async function runStdio(cfg: Config, allow: AllowList): Promise<void> {
+  bootBanner(cfg, allow);
   const server = buildServer(allow);
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -389,21 +509,16 @@ function timingSafeEq(a: string, b: string): boolean {
   return diff === 0;
 }
 
-async function runHttp(): Promise<void> {
-  const allow = loadAllowList();
-  bootBanner(allow, "http");
+async function runHttp(cfg: Config, allow: AllowList): Promise<void> {
+  bootBanner(cfg, allow);
 
-  const token = process.env.SHELL_MCP_TOKEN;
-  if (!token || token.length < 16) {
-    console.error(
-      "FATAL: SHELL_MCP_TOKEN must be set (>=16 chars) for HTTP transport.\n" +
-      "  generate: openssl rand -hex 32"
-    );
+  if (!cfg.token || cfg.token.length < 16) {
+    console.error(`[${SERVER_NAME}] FATAL: HTTP transport requires a token (>=16 chars).`);
+    console.error(`[${SERVER_NAME}]        Generate one:  openssl rand -hex 32`);
+    console.error(`[${SERVER_NAME}]        Pass via:      --token <token>   or   SHELL_MCP_TOKEN=<token>`);
     process.exit(1);
   }
-
-  const host = process.env.HOST || "127.0.0.1";
-  const port = parseInt(process.env.PORT || "3000", 10);
+  const token = cfg.token;
 
   const app = express();
   app.use(express.json({ limit: "100mb" }));
@@ -440,14 +555,9 @@ async function runHttp(): Promise<void> {
     res.json({ ok: true, name: SERVER_NAME, version: SERVER_VERSION })
   );
 
-  app.listen(port, host, () => {
-    console.error(`[${SERVER_NAME}] listening http://${host}:${port}/mcp`);
-    if (host === "0.0.0.0") {
-      console.error(
-        `[${SERVER_NAME}] ⚠  bound to 0.0.0.0 — token is your only defense. ` +
-        `Prefer HOST=127.0.0.1 + SSH tunnel.`
-      );
-    }
+  app.listen(cfg.port, cfg.host, () => {
+    console.error(`[${SERVER_NAME}] listening on http://${cfg.host}:${cfg.port}/mcp`);
+    console.error(`[${SERVER_NAME}] ready — awaiting requests.`);
   });
 }
 
@@ -455,9 +565,10 @@ async function runHttp(): Promise<void> {
 // Entry
 // ─────────────────────────────────────────────────────────────────────────────
 
-const transport = (process.env.TRANSPORT || "stdio").toLowerCase();
-const main = transport === "http" ? runHttp : runStdio;
-main().catch((err) => {
+const cfg = parseCli();
+const allow = loadAllowList({ ALLOW_COMMANDS: cfg.allowCommands ?? "" } as NodeJS.ProcessEnv);
+const main = cfg.transport === "http" ? runHttp : runStdio;
+main(cfg, allow).catch((err) => {
   console.error(`[${SERVER_NAME}] fatal:`, err);
   process.exit(1);
 });

@@ -18,14 +18,34 @@ Same request/response shape as upstream, so existing clients work unchanged.
 | `read_file` / `write_file` / `upload_file_b64` / `list_dir` / `system_info` | new | Quality-of-life |
 | Single-binary build (Bun compile) | new | 5 platforms via CI |
 
+## CLI flags
+
+```
+mcp-linux-js [options]
+
+  -t, --transport <stdio|http>   Transport (default: stdio)             [env: TRANSPORT]
+  -H, --host <addr>              HTTP bind address (default: 127.0.0.1) [env: HOST]
+  -p, --port <num>               HTTP port (default: 3000)              [env: PORT]
+      --token <str>              Bearer token for HTTP (>=16 chars)     [env: SHELL_MCP_TOKEN]
+      --allow-commands <csv>     Comma-sep allowlist.                   [env: ALLOW_COMMANDS]
+                                 Unset = unrestricted (lab mode).
+  -h, --help                     Show help
+  -v, --version                  Show version
+```
+
+CLI flags override env vars. Env vars override defaults.
+
 ## Modes
 
 ```bash
-# Same as tumf (safe-ish): only listed commands allowed
+# Allowlist (safe-ish): only listed commands allowed
+mcp-linux-js --allow-commands "ls,cat,pwd,grep,wc,find"
+
+# Equivalent via env:
 ALLOW_COMMANDS="ls,cat,pwd,grep,wc,find" mcp-linux-js
 
-# Unrestricted (lab): no allowlist
-mcp-linux-js   # emits WARNING on boot
+# Unrestricted (lab): no allowlist — emits WARNING on boot
+mcp-linux-js
 ```
 
 ## Transports
@@ -37,7 +57,7 @@ mcp-linux-js   # emits WARNING on boot
   "mcpServers": {
     "shell": {
       "command": "/path/to/mcp-linux-js-linux-x64",
-      "env": { "ALLOW_COMMANDS": "ls,cat,pwd,grep,wc,find" }
+      "args": ["--allow-commands", "ls,cat,pwd,grep,wc,find"]
     }
   }
 }
@@ -45,11 +65,24 @@ mcp-linux-js   # emits WARNING on boot
 
 ### HTTP w/ bearer token (for remote boxes)
 
-On the server:
+On the server (flags):
+```bash
+./mcp-linux-js-linux-x64 \
+  --transport http --host 127.0.0.1 --port 3000 \
+  --token "$(openssl rand -hex 32)" \
+  --allow-commands "ls,cat,grep"
+```
+
+Or via env:
 ```bash
 export SHELL_MCP_TOKEN=$(openssl rand -hex 32)
 # optionally: export ALLOW_COMMANDS="ls,cat,apt-get,..."
 TRANSPORT=http HOST=127.0.0.1 PORT=3000 ./mcp-linux-js-linux-x64
+```
+
+Generate a token:
+```bash
+openssl rand -hex 32
 ```
 
 On the client machine, SSH-tunnel the port:
@@ -102,14 +135,16 @@ Pipelines and sequences:
 
 ## Env vars
 
-| Var | Default | Notes |
-|---|---|---|
-| `TRANSPORT` | `stdio` | `stdio` or `http` |
-| `HOST` | `127.0.0.1` | HTTP bind |
-| `PORT` | `3000` | HTTP port |
-| `SHELL_MCP_TOKEN` | — | Required for HTTP, ≥16 chars |
-| `ALLOW_COMMANDS` | unset | Comma list. Unset → unrestricted. |
-| `ALLOWED_COMMANDS` | — | Alias of `ALLOW_COMMANDS` |
+All env vars have a CLI-flag equivalent (see [CLI flags](#cli-flags)). Flags override env.
+
+| Var | Flag | Default | Notes |
+|---|---|---|---|
+| `TRANSPORT` | `-t, --transport` | `stdio` | `stdio` or `http` |
+| `HOST` | `-H, --host` | `127.0.0.1` | HTTP bind |
+| `PORT` | `-p, --port` | `3000` | HTTP port |
+| `SHELL_MCP_TOKEN` | `--token` | — | Required for HTTP, ≥16 chars |
+| `ALLOW_COMMANDS` | `--allow-commands` | unset | Comma list. Unset → unrestricted. |
+| `ALLOWED_COMMANDS` | — | — | Alias of `ALLOW_COMMANDS` |
 
 ## Build locally
 
@@ -124,11 +159,23 @@ bun run compile:all
 
 ```bash
 docker build -t mcp-linux-js .
+
+# via env
 docker run --rm \
   -e SHELL_MCP_TOKEN=$(openssl rand -hex 32) \
   -e ALLOW_COMMANDS="ls,cat,grep" \
   -p 127.0.0.1:3000:3000 \
   mcp-linux-js
+
+# via CLI flags (HTTP default inside image)
+docker run --rm \
+  -p 127.0.0.1:3000:3000 \
+  mcp-linux-js \
+    --token "$(openssl rand -hex 32)" \
+    --allow-commands "ls,cat,grep"
+
+# print help
+docker run --rm mcp-linux-js --help
 ```
 
 ## Security reality check
