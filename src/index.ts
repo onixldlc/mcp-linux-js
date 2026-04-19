@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * mcp-shell-bun
+ * mcp-linux-js
  * --------------
  * Bun-native MCP shell server. Port of tumf/mcp-shell-server semantics
  * (allowlist + stdin + shell-operator validation, no /bin/sh) plus:
@@ -25,7 +25,7 @@ import os from "node:os";
 import { loadAllowList, validateCommand, type AllowList } from "./validator.js";
 import { execPipeline } from "./executor.js";
 
-const SERVER_NAME = "mcp-shell-bun";
+const SERVER_NAME = "mcp-linux-js";
 const SERVER_VERSION = "1.0.0";
 
 const DEFAULT_TIMEOUT_SEC = 120;

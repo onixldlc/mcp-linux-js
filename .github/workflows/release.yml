@@ -17,11 +17,11 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          - { label: "linux-x64",    flag: "bun-linux-x64",    out: "mcp-shell-bun-linux-x64" }
-          - { label: "linux-arm64",  flag: "bun-linux-arm64",  out: "mcp-shell-bun-linux-arm64" }
-          - { label: "darwin-x64",   flag: "bun-darwin-x64",   out: "mcp-shell-bun-darwin-x64" }
-          - { label: "darwin-arm64", flag: "bun-darwin-arm64", out: "mcp-shell-bun-darwin-arm64" }
-          - { label: "windows-x64",  flag: "bun-windows-x64",  out: "mcp-shell-bun-windows-x64.exe" }
+          - { label: "linux-x64",    flag: "bun-linux-x64",    out: "mcp-linux-js-linux-x64" }
+          - { label: "linux-arm64",  flag: "bun-linux-arm64",  out: "mcp-linux-js-linux-arm64" }
+          - { label: "darwin-x64",   flag: "bun-darwin-x64",   out: "mcp-linux-js-darwin-x64" }
+          - { label: "darwin-arm64", flag: "bun-darwin-arm64", out: "mcp-linux-js-darwin-arm64" }
+          - { label: "windows-x64",  flag: "bun-windows-x64",  out: "mcp-linux-js-windows-x64.exe" }
     steps:
       - uses: actions/checkout@v4
 

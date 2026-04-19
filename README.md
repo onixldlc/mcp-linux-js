@@ -1,4 +1,4 @@
-# mcp-shell-bun
+# mcp-linux-js
 
 Single-binary MCP shell server. Bun/TypeScript port of [tumf/mcp-shell-server](https://github.com/tumf/mcp-shell-server) (MIT) + HTTP transport w/ bearer auth + file helpers + cross-platform prebuilt binaries.
 
@@ -22,10 +22,10 @@ Same request/response shape as upstream, so existing clients work unchanged.
 
 ```bash
 # Same as tumf (safe-ish): only listed commands allowed
-ALLOW_COMMANDS="ls,cat,pwd,grep,wc,find" mcp-shell-bun
+ALLOW_COMMANDS="ls,cat,pwd,grep,wc,find" mcp-linux-js
 
 # Unrestricted (lab): no allowlist
-mcp-shell-bun   # emits WARNING on boot
+mcp-linux-js   # emits WARNING on boot
 ```
 
 ## Transports
@@ -36,7 +36,7 @@ mcp-shell-bun   # emits WARNING on boot
 {
   "mcpServers": {
     "shell": {
-      "command": "/path/to/mcp-shell-bun-linux-x64",
+      "command": "/path/to/mcp-linux-js-linux-x64",
       "env": { "ALLOW_COMMANDS": "ls,cat,pwd,grep,wc,find" }
     }
   }
@@ -49,7 +49,7 @@ On the server:
 ```bash
 export SHELL_MCP_TOKEN=$(openssl rand -hex 32)
 # optionally: export ALLOW_COMMANDS="ls,cat,apt-get,..."
-TRANSPORT=http HOST=127.0.0.1 PORT=3000 ./mcp-shell-bun-linux-x64
+TRANSPORT=http HOST=127.0.0.1 PORT=3000 ./mcp-linux-js-linux-x64
 ```
 
 On the client machine, SSH-tunnel the port:
@@ -115,7 +115,7 @@ Pipelines and sequences:
 
 ```bash
 bun install
-bun run compile:linux-x64   # → dist/mcp-shell-bun-linux-x64
+bun run compile:linux-x64   # → dist/mcp-linux-js-linux-x64
 # or all 5 platforms:
 bun run compile:all
 ```
@@ -123,12 +123,12 @@ bun run compile:all
 ## Docker
 
 ```bash
-docker build -t mcp-shell-bun .
+docker build -t mcp-linux-js .
 docker run --rm \
   -e SHELL_MCP_TOKEN=$(openssl rand -hex 32) \
   -e ALLOW_COMMANDS="ls,cat,grep" \
   -p 127.0.0.1:3000:3000 \
-  mcp-shell-bun
+  mcp-linux-js
 ```
 
 ## Security reality check
